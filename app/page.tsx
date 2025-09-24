@@ -404,9 +404,8 @@ export default function HomePage() {
     <main>
       <h1>Compare Tracks</h1>
       <p style={{ opacity: 0.75 }}>
-        Load two audio renders to perform instant A/B comparisons. Use <span className="keycap">Space</span> to
-        play or pause, <span className="keycap">A</span> / <span className="keycap">B</span> to switch focus, <span className="keycap">T</span> to toggle instantly,
-        and adjust levels independently to compensate for loudness differences.
+        Load two tracks to perform synchronized A/B comparisons. Use <span className="keycap">Space</span> to play or pause,
+        <span className="keycap">T</span> to toggle, and adjust levels independently to match volume.
       </p>
 
       <section className="track-grid">
@@ -487,11 +486,6 @@ export default function HomePage() {
           <div>
             <span className="keycap">T</span>
             Toggle focus
-          </div>
-          <div className="shortcut-soon">
-            <span className="keycap">⇧</span>
-            + <span className="keycap">A</span> / <span className="keycap">B</span>
-            <span className="coming-soon">Coming soon — solo preview</span>
           </div>
         </div>
       </section>
