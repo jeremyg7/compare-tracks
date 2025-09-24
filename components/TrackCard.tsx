@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useId } from "react";
+import { ChangeEvent, useId, useRef } from "react";
 import { formatTime } from "@/lib/formatTime";
 
 type TrackId = "A" | "B";
@@ -36,6 +36,9 @@ export function TrackCard({
   onVolumeChange
 }: TrackCardProps) {
   const inputId = useId();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const setActiveDisabled = !track.hasBuffer || track.loading;
+  const isLoading = track.loading;
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -96,6 +99,7 @@ export function TrackCard({
         <button
           type="button"
           onClick={onSetActive}
+          disabled={setActiveDisabled}
           style={{
             flex: "0 0 auto",
             padding: "10px 16px",
@@ -103,11 +107,30 @@ export function TrackCard({
             background: isActive ? "rgba(34, 211, 238, 0.2)" : "rgba(148, 163, 184, 0.15)",
             border: "1px solid rgba(148, 163, 184, 0.4)",
             color: isActive ? "#22d3ee" : "#e2e8f0",
-            cursor: "pointer",
+            cursor: setActiveDisabled ? "not-allowed" : "pointer",
+            opacity: setActiveDisabled ? 0.6 : 1,
             transition: "all 0.2s ease"
           }}
         >
           {isActive ? "Currently A/B focus" : "Set as active"}
+        </button>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+          style={{
+            flex: "0 0 auto",
+            padding: "10px 16px",
+            borderRadius: "999px",
+            background: "rgba(59, 130, 246, 0.2)",
+            border: "1px solid rgba(59, 130, 246, 0.45)",
+            color: "#bfdbfe",
+            cursor: isLoading ? "wait" : "pointer",
+            opacity: isLoading ? 0.7 : 1,
+            transition: "all 0.2s ease"
+          }}
+        >
+          Load
         </button>
       </div>
 
@@ -129,6 +152,7 @@ export function TrackCard({
 
       <input
         id={inputId}
+        ref={fileInputRef}
         type="file"
         accept="audio/*"
         style={{ display: "none" }}

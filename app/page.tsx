@@ -312,6 +312,10 @@ export default function HomePage() {
     [applyGain]
   );
 
+  const toggleActiveTrack = useCallback(() => {
+    setActiveTrack((prev) => (prev === "A" ? "B" : "A"));
+  }, []);
+
   useEffect(() => {
     playbackDurationRef.current = Math.max(
       tracks.A.duration ?? 0,
@@ -326,12 +330,18 @@ export default function HomePage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLElement) {
-        const tagName = event.target.tagName;
-        if (tagName === "INPUT" || tagName === "TEXTAREA") {
+      const target = event.target as HTMLElement | null;
+
+      if (target) {
+        if (target instanceof HTMLInputElement && target.type !== "range") {
           return;
         }
-        if (event.target.getAttribute("contenteditable") === "true") {
+
+        if (target.tagName === "TEXTAREA") {
+          return;
+        }
+
+        if (target.getAttribute("contenteditable") === "true") {
           return;
         }
       }
@@ -351,12 +361,21 @@ export default function HomePage() {
       if (event.code === TRACK_KEYS.B) {
         event.preventDefault();
         setActiveTrack("B");
+        return;
+      }
+
+      if (event.code === "KeyT") {
+        if (tracks.A.hasBuffer && tracks.B.hasBuffer) {
+          event.preventDefault();
+          toggleActiveTrack();
+        }
+        return;
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handlePlayPause]);
+  }, [handlePlayPause, toggleActiveTrack, tracks.A.hasBuffer, tracks.B.hasBuffer]);
 
   useEffect(() => {
     return () => {
@@ -377,6 +396,8 @@ export default function HomePage() {
     [tracks.A.hasBuffer, tracks.B.hasBuffer]
   );
 
+  const canToggle = tracks.A.hasBuffer && tracks.B.hasBuffer;
+
   const formattedDuration = playbackDuration ? formatTime(playbackDuration) : "--:--";
 
   return (
@@ -384,8 +405,8 @@ export default function HomePage() {
       <h1>Compare Tracks</h1>
       <p style={{ opacity: 0.75, maxWidth: "620px" }}>
         Load two audio renders to perform instant A/B comparisons. Use <span className="keycap">Space</span> to
-        play or pause, <span className="keycap">A</span> / <span className="keycap">B</span> to switch focus, and adjust
-        levels independently to compensate for loudness differences.
+        play or pause, <span className="keycap">A</span> / <span className="keycap">B</span> to switch focus, <span className="keycap">T</span> to toggle instantly,
+        and adjust levels independently to compensate for loudness differences.
       </p>
 
       <section className="track-grid">
@@ -434,6 +455,23 @@ export default function HomePage() {
           </button>
           <button
             type="button"
+            onClick={toggleActiveTrack}
+            disabled={!canToggle}
+            style={{
+              padding: "10px 18px",
+              borderRadius: "999px",
+              background: "rgba(22, 163, 74, 0.18)",
+              border: "1px solid rgba(34, 197, 94, 0.45)",
+              color: "#bbf7d0",
+              cursor: canToggle ? "pointer" : "not-allowed",
+              opacity: canToggle ? 1 : 0.65,
+              transition: "background 0.2s ease, border-color 0.2s ease"
+            }}
+          >
+            Toggle Focus (T)
+          </button>
+          <button
+            type="button"
             onClick={() => handleSeek(0)}
             disabled={!playbackDuration}
             style={{
@@ -461,6 +499,10 @@ export default function HomePage() {
           <div>
             <span className="keycap">B</span>
             Focus Track B
+          </div>
+          <div>
+            <span className="keycap">T</span>
+            Toggle focus
           </div>
           <div>
             <span className="keycap">⇧</span>
