@@ -1,0 +1,143 @@
+"use client";
+
+import { ChangeEvent, useId } from "react";
+import { formatTime } from "@/lib/formatTime";
+
+type TrackId = "A" | "B";
+
+export interface TrackCardProps {
+  track: {
+    id: TrackId;
+    name: string | null;
+    duration: number | null;
+    sampleRate: number | null;
+    size: number | null;
+    loading: boolean;
+    error: string | null;
+    volume: number;
+    hasBuffer: boolean;
+  };
+  isActive: boolean;
+  onFileSelect: (file: File) => void;
+  onSetActive: () => void;
+  onVolumeChange: (volume: number) => void;
+}
+
+const LABELS: Record<TrackId, string> = {
+  A: "Track A",
+  B: "Track B"
+};
+
+export function TrackCard({
+  track,
+  isActive,
+  onFileSelect,
+  onSetActive,
+  onVolumeChange
+}: TrackCardProps) {
+  const inputId = useId();
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    onFileSelect(file);
+    // reset input so selecting the same file again re-triggers change
+    event.target.value = "";
+  };
+
+  const formattedSize = track.size
+    ? `${(track.size / (1024 * 1024)).toFixed(2)} MB`
+    : "--";
+
+  return (
+    <article className={`track-card${isActive ? " active" : ""}`}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ margin: 0 }}>{LABELS[track.id]}</h3>
+        {track.hasBuffer ? (
+          <span className="status-badge">{isActive ? "Active" : "Standby"}</span>
+        ) : null}
+      </header>
+
+      {track.hasBuffer ? (
+        <div style={{ marginTop: "16px" }}>
+          <p className="filename">{track.name}</p>
+          <div className="track-meta">
+            <span>Duration</span>
+            <span>{formatTime(track.duration)}</span>
+            <span>Sample Rate</span>
+            <span>
+              {track.sampleRate ? `${Math.round(track.sampleRate)} Hz` : "--"}
+            </span>
+            <span>File Size</span>
+            <span>{formattedSize}</span>
+            <span>Shortcut</span>
+            <span>
+              <span className="keycap">{track.id}</span>
+              to activate
+            </span>
+          </div>
+        </div>
+      ) : (
+        <label className="upload-zone" htmlFor={inputId}>
+          <div>
+            <strong>Load audio file</strong>
+            <p style={{ margin: "8px 0 0", opacity: 0.75 }}>
+              Drag & drop or click to browse (WAV, AIFF, FLAC, MP3)
+            </p>
+          </div>
+        </label>
+      )}
+
+      {track.error ? (
+        <p style={{ color: "#fca5a5", marginTop: "12px" }}>{track.error}</p>
+      ) : null}
+
+      <div className="track-actions">
+        <button
+          type="button"
+          onClick={onSetActive}
+          style={{
+            flex: "0 0 auto",
+            padding: "10px 16px",
+            borderRadius: "999px",
+            background: isActive ? "rgba(34, 211, 238, 0.2)" : "rgba(148, 163, 184, 0.15)",
+            border: "1px solid rgba(148, 163, 184, 0.4)",
+            color: isActive ? "#22d3ee" : "#e2e8f0",
+            cursor: "pointer",
+            transition: "all 0.2s ease"
+          }}
+        >
+          {isActive ? "Currently A/B focus" : "Set as active"}
+        </button>
+      </div>
+
+      <div className="volume-control" style={{ marginTop: "18px" }}>
+        <label htmlFor={`${inputId}-volume`}>Level</label>
+        <input
+          id={`${inputId}-volume`}
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={track.volume}
+          onChange={(event) => onVolumeChange(Number(event.target.value))}
+        />
+        <output>
+          {(track.volume * 100).toFixed(0)}% gain
+        </output>
+      </div>
+
+      <input
+        id={inputId}
+        type="file"
+        accept="audio/*"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+
+      {track.loading ? (
+        <p style={{ marginTop: "12px", opacity: 0.75 }}>Decoding audio…</p>
+      ) : null}
+    </article>
+  );
+}

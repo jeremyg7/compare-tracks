@@ -1,0 +1,30 @@
+# Large/Generated artifacts Codex should ignore
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+playwright-report/
+
+# Environment / secrets
+.env*
+
+# Cache & OS
+.cache/
+.tmp/
+.DS_Store
+Thumbs.db
+
+# Audio assets (keep sample references small)
+*.wav
+*.aiff
+*.aif
+*.flac
+*.mp3
+*.ogg
+*.m4a
+
+# Recordings & exports
+exports/
+render-tests/

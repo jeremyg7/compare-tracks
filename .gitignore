@@ -1,0 +1,37 @@
+# Node / Next.js
+node_modules/
+.pnp.cjs
+.pnp.loader.mjs
+
+# Build output
+.next/
+.next-static/
+out/
+dist/
+build/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log
+
+# Environment
+.env*
+!.env.example
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Testing
+/playwright-report/
+/test-results/
+/.nyc_output/
+
+# Misc
+.tmp/
+.cache/
