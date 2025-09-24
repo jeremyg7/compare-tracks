@@ -449,50 +449,49 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="transport-bottom">
-          <div className="transport-controls">
-            <button type="button" onClick={handlePlayPause} disabled={!playbackDuration}>
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-            <button
-              type="button"
-              onClick={toggleActiveTrack}
-              disabled={!canToggle}
-              className="transport-toggle"
-            >
-              Toggle Focus (T)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSeek(0)}
-              disabled={!playbackDuration}
-              className="transport-rewind"
-            >
-              Rewind
-            </button>
+        <div className="transport-controls">
+          <button type="button" onClick={handlePlayPause} disabled={!playbackDuration}>
+            {isPlaying ? "Pause" : "Play"}
+          </button>
+          <button
+            type="button"
+            onClick={toggleActiveTrack}
+            disabled={!canToggle}
+            className="transport-toggle"
+          >
+            Toggle Focus (T)
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSeek(0)}
+            disabled={!playbackDuration}
+            className="transport-rewind"
+          >
+            Rewind
+          </button>
+        </div>
+
+        <div className="shortcut-grid">
+          <div>
+            <span className="keycap">Space</span>
+            Play / Pause
           </div>
-          <div className="shortcut-grid">
-            <div>
-              <span className="keycap">Space</span>
-              Play / Pause
-            </div>
-            <div>
-              <span className="keycap">A</span>
-              Focus Track A
-            </div>
-            <div>
-              <span className="keycap">B</span>
-              Focus Track B
-            </div>
-            <div>
-              <span className="keycap">T</span>
-              Toggle focus
-            </div>
-            <div className="shortcut-soon">
-              <span className="keycap">⇧</span>
-              + <span className="keycap">A</span> / <span className="keycap">B</span>
-              <span className="coming-soon">Coming soon — solo preview</span>
-            </div>
+          <div>
+            <span className="keycap">A</span>
+            Focus Track A
+          </div>
+          <div>
+            <span className="keycap">B</span>
+            Focus Track B
+          </div>
+          <div>
+            <span className="keycap">T</span>
+            Toggle focus
+          </div>
+          <div className="shortcut-soon">
+            <span className="keycap">⇧</span>
+            + <span className="keycap">A</span> / <span className="keycap">B</span>
+            <span className="coming-soon">Coming soon — solo preview</span>
           </div>
         </div>
       </section>
