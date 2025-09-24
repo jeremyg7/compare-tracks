@@ -6,7 +6,48 @@ export interface LoudnessMetrics {
 const ABSOLUTE_GATE_LUFS = -70;
 const RELATIVE_GATE_OFFSET = 10;
 const BLOCK_DURATION_SECONDS = 0.4;
+const STEP_DURATION_SECONDS = 0.1;
 const LUFS_OFFSET = -0.691;
+
+const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
+  if (typeof OfflineAudioContext === "undefined") {
+    return buffer;
+  }
+
+  try {
+    const offlineContext = new OfflineAudioContext(
+      buffer.numberOfChannels,
+      buffer.length,
+      buffer.sampleRate
+    );
+
+    const source = offlineContext.createBufferSource();
+    source.buffer = buffer;
+
+    const highpass = offlineContext.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 40;
+    highpass.Q.value = Math.SQRT1_2;
+
+    const highshelf = offlineContext.createBiquadFilter();
+    highshelf.type = "highshelf";
+    highshelf.frequency.value = 4000;
+    highshelf.gain.value = 4;
+    highshelf.Q.value = Math.SQRT1_2;
+
+    source.connect(highpass);
+    highpass.connect(highshelf);
+    highshelf.connect(offlineContext.destination);
+
+    source.start(0);
+
+    const rendered = await offlineContext.startRendering();
+    return rendered;
+  } catch (error) {
+    console.warn("K-weighting failed, falling back to unweighted audio", error);
+    return buffer;
+  }
+};
 
 const toLUFS = (meanSquare: number): number => {
   if (meanSquare <= 0) {
@@ -26,49 +67,60 @@ const integrateBlocks = (meanSquares: number[]): number | null => {
   return LUFS_OFFSET + 10 * Math.log10(energy);
 };
 
-export function analyzeLoudness(buffer: AudioBuffer): LoudnessMetrics {
+export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetrics> {
   const channelCount = buffer.numberOfChannels;
   if (channelCount === 0) {
     return { lufsIntegrated: null, peakDb: null };
   }
 
-  const channelData = Array.from({ length: channelCount }, (_, index) =>
+  const weightedBuffer = await applyKWeighting(buffer);
+  const weightedChannels = Array.from({ length: channelCount }, (_, index) =>
+    weightedBuffer.getChannelData(Math.min(index, weightedBuffer.numberOfChannels - 1))
+  );
+
+  const originalChannels = Array.from({ length: channelCount }, (_, index) =>
     buffer.getChannelData(index)
   );
 
   const blockSize = Math.max(1, Math.round(BLOCK_DURATION_SECONDS * buffer.sampleRate));
+  const stepSize = Math.max(1, Math.round(STEP_DURATION_SECONDS * buffer.sampleRate));
   const totalSamples = buffer.length;
 
   let absolutePeak = 0;
+  for (let channel = 0; channel < channelCount; channel += 1) {
+    const data = originalChannels[channel];
+    for (let i = 0; i < totalSamples; i += 1) {
+      const abs = Math.abs(data[i]);
+      if (abs > absolutePeak) {
+        absolutePeak = abs;
+      }
+    }
+  }
+
   const meanSquares: number[] = [];
   const lufsPerBlock: number[] = [];
 
-  for (let blockStart = 0; blockStart < totalSamples; blockStart += blockSize) {
-    const blockSamples = Math.min(blockSize, totalSamples - blockStart);
-    if (blockSamples === 0) {
-      continue;
-    }
-
+  for (let blockStart = 0; blockStart + blockSize <= totalSamples; blockStart += stepSize) {
     let blockSquareSum = 0;
 
     for (let channel = 0; channel < channelCount; channel += 1) {
-      const data = channelData[channel];
-      for (let i = 0; i < blockSamples; i += 1) {
-        const sample = data[blockStart + i];
-        const abs = Math.abs(sample);
-        if (abs > absolutePeak) {
-          absolutePeak = abs;
-        }
+      const data = weightedChannels[channel];
+      for (let i = 0; i < blockSize; i += 1) {
+        const sample = data[blockStart + i] ?? 0;
         blockSquareSum += sample * sample;
       }
     }
 
-    const meanSquare = blockSquareSum / (blockSamples * channelCount);
+    const meanSquare = blockSquareSum / (blockSize * channelCount);
     meanSquares.push(meanSquare);
     lufsPerBlock.push(toLUFS(meanSquare));
   }
 
-  const peakDb = absolutePeak > 0 ? 20 * Math.log10(absolutePeak) : null;
+  const peakDb = absolutePeak > 0 ? Math.min(20 * Math.log10(absolutePeak), 0) : null;
+
+  if (meanSquares.length === 0) {
+    return { lufsIntegrated: null, peakDb };
+  }
 
   const aboveAbsoluteGate: number[] = [];
   const aboveAbsoluteGateLufs: number[] = [];

@@ -268,7 +268,7 @@ export default function HomePage() {
         const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 
         buffersRef.current[trackId] = buffer;
-        const { lufsIntegrated, peakDb } = analyzeLoudness(buffer);
+        const { lufsIntegrated, peakDb } = await analyzeLoudness(buffer);
         setTracks((prev) => ({
           ...prev,
           [trackId]: {
