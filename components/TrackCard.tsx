@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, useId, useRef } from "react";
+import { formatDb } from "@/lib/formatDb";
 import { formatTime } from "@/lib/formatTime";
 
 type TrackId = "A" | "B";
@@ -16,6 +17,8 @@ export interface TrackCardProps {
     error: string | null;
     volume: number;
     hasBuffer: boolean;
+    lufsIntegrated: number | null;
+    peakDb: number | null;
   };
   isActive: boolean;
   onFileSelect: (file: File) => void;
@@ -51,6 +54,8 @@ export function TrackCard({
   const formattedSize = track.size
     ? `${(track.size / (1024 * 1024)).toFixed(2)} MB`
     : "--";
+  const formattedLufs = track.lufsIntegrated === null ? "--" : `${track.lufsIntegrated.toFixed(1)} LUFS`;
+  const formattedPeak = formatDb(track.peakDb, "dBFS");
 
   return (
     <article className={`track-card${isActive ? " active" : ""}`}>
@@ -73,11 +78,10 @@ export function TrackCard({
             </span>
             <span>File Size</span>
             <span>{formattedSize}</span>
-            <span>Shortcut</span>
-            <span>
-              <span className="keycap">{track.id}</span>
-              to activate
-            </span>
+            <span>LUFS-I</span>
+            <span>{formattedLufs}</span>
+            <span>Peak</span>
+            <span>{formattedPeak}</span>
           </div>
         </div>
       ) : (

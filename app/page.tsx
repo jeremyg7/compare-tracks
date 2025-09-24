@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrackCard } from "@/components/TrackCard";
+import { analyzeLoudness } from "@/lib/audioAnalysis";
 import { formatTime } from "@/lib/formatTime";
 
 type TrackId = "A" | "B";
@@ -16,6 +17,8 @@ interface TrackState {
   error: string | null;
   volume: number;
   hasBuffer: boolean;
+  lufsIntegrated: number | null;
+  peakDb: number | null;
 }
 
 const initialTrackState = (id: TrackId): TrackState => ({
@@ -27,7 +30,9 @@ const initialTrackState = (id: TrackId): TrackState => ({
   loading: false,
   error: null,
   volume: 0.8,
-  hasBuffer: false
+  hasBuffer: false,
+  lufsIntegrated: null,
+  peakDb: null
 });
 
 const TRACK_KEYS: Record<TrackId, string> = {
@@ -263,6 +268,7 @@ export default function HomePage() {
         const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 
         buffersRef.current[trackId] = buffer;
+        const { lufsIntegrated, peakDb } = analyzeLoudness(buffer);
         setTracks((prev) => ({
           ...prev,
           [trackId]: {
@@ -273,7 +279,9 @@ export default function HomePage() {
             size: file.size,
             loading: false,
             error: null,
-            hasBuffer: true
+            hasBuffer: true,
+            lufsIntegrated,
+            peakDb
           }
         }));
 
@@ -290,7 +298,9 @@ export default function HomePage() {
             ...prev[trackId],
             loading: false,
             error: "Unable to decode this audio file.",
-            hasBuffer: false
+            hasBuffer: false,
+            lufsIntegrated: null,
+            peakDb: null
           }
         }));
       }
