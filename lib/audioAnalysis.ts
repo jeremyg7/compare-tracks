@@ -83,8 +83,8 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
   );
 
   const channelWeights = new Array(channelCount).fill(1);
-  if (channelCount >= 6) {
-    // Basic 5.1 weighting: L, R, C, LFE, Ls, Rs (LFE excluded)
+  if (channelCount === 6) {
+    // L, R, C, LFE, Ls, Rs — LFE excluded from loudness
     channelWeights[3] = 0;
   }
 
@@ -111,18 +111,20 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
     if (actualBlockSize <= 0) {
       continue;
     }
-    let blockSquareSum = 0;
 
-    for (let i = 0; i < actualBlockSize; i += 1) {
-      let combined = 0;
-      for (let channel = 0; channel < channelCount; channel += 1) {
-        const sample = weightedChannels[channel][blockStart + i] ?? 0;
-        combined += channelWeights[channel] * sample;
+    let blockEnergy = 0;
+
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const data = weightedChannels[channel];
+      let channelEnergy = 0;
+      for (let i = 0; i < actualBlockSize; i += 1) {
+        const sample = data[blockStart + i] ?? 0;
+        channelEnergy += sample * sample;
       }
-      blockSquareSum += combined * combined;
+      blockEnergy += channelWeights[channel] * (channelEnergy / actualBlockSize);
     }
 
-    const meanSquare = blockSquareSum / actualBlockSize;
+    const meanSquare = blockEnergy;
     meanSquares.push(meanSquare);
     lufsPerBlock.push(toLUFS(meanSquare));
   }

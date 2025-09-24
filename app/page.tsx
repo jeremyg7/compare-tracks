@@ -362,6 +362,12 @@ export default function HomePage() {
         return;
       }
 
+      if (event.code === "KeyW") {
+        event.preventDefault();
+        void handleSeek(0);
+        return;
+      }
+
       if (event.code === TRACK_KEYS.A) {
         event.preventDefault();
         setActiveTrack("A");
@@ -385,7 +391,7 @@ export default function HomePage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handlePlayPause, toggleActiveTrack, tracks.A.hasBuffer, tracks.B.hasBuffer]);
+  }, [handlePlayPause, handleSeek, toggleActiveTrack, tracks.A.hasBuffer, tracks.B.hasBuffer]);
 
   useEffect(() => {
     return () => {
