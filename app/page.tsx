@@ -403,7 +403,7 @@ export default function HomePage() {
   return (
     <main>
       <h1>Compare Tracks</h1>
-      <p style={{ opacity: 0.75, maxWidth: "620px" }}>
+      <p style={{ opacity: 0.75 }}>
         Load two audio renders to perform instant A/B comparisons. Use <span className="keycap">Space</span> to
         play or pause, <span className="keycap">A</span> / <span className="keycap">B</span> to switch focus, <span className="keycap">T</span> to toggle instantly,
         and adjust levels independently to compensate for loudness differences.
@@ -449,64 +449,50 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "12px", marginTop: "18px" }}>
-          <button type="button" onClick={handlePlayPause} disabled={!playbackDuration}>
-            {isPlaying ? "Pause" : "Play"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleActiveTrack}
-            disabled={!canToggle}
-            style={{
-              padding: "10px 18px",
-              borderRadius: "999px",
-              background: "rgba(22, 163, 74, 0.18)",
-              border: "1px solid rgba(34, 197, 94, 0.45)",
-              color: "#bbf7d0",
-              cursor: canToggle ? "pointer" : "not-allowed",
-              opacity: canToggle ? 1 : 0.65,
-              transition: "background 0.2s ease, border-color 0.2s ease"
-            }}
-          >
-            Toggle Focus (T)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSeek(0)}
-            disabled={!playbackDuration}
-            style={{
-              padding: "10px 18px",
-              borderRadius: "999px",
-              background: "rgba(148, 163, 184, 0.15)",
-              border: "1px solid rgba(148, 163, 184, 0.4)",
-              color: "#e2e8f0",
-              cursor: playbackDuration ? "pointer" : "not-allowed"
-            }}
-          >
-            Rewind
-          </button>
-        </div>
-
-        <div className="shortcut-grid">
-          <div>
-            <span className="keycap">Space</span>
-            Play / Pause
+        <div className="transport-bottom">
+          <div className="transport-controls">
+            <button type="button" onClick={handlePlayPause} disabled={!playbackDuration}>
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              onClick={toggleActiveTrack}
+              disabled={!canToggle}
+              className="transport-toggle"
+            >
+              Toggle Focus (T)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSeek(0)}
+              disabled={!playbackDuration}
+              className="transport-rewind"
+            >
+              Rewind
+            </button>
           </div>
-          <div>
-            <span className="keycap">A</span>
-            Focus Track A
-          </div>
-          <div>
-            <span className="keycap">B</span>
-            Focus Track B
-          </div>
-          <div>
-            <span className="keycap">T</span>
-            Toggle focus
-          </div>
-          <div>
-            <span className="keycap">⇧</span>
-            + <span className="keycap">A</span> / <span className="keycap">B</span> — future solo preview
+          <div className="shortcut-grid">
+            <div>
+              <span className="keycap">Space</span>
+              Play / Pause
+            </div>
+            <div>
+              <span className="keycap">A</span>
+              Focus Track A
+            </div>
+            <div>
+              <span className="keycap">B</span>
+              Focus Track B
+            </div>
+            <div>
+              <span className="keycap">T</span>
+              Toggle focus
+            </div>
+            <div className="shortcut-soon">
+              <span className="keycap">⇧</span>
+              + <span className="keycap">A</span> / <span className="keycap">B</span>
+              <span className="coming-soon">Coming soon — solo preview</span>
+            </div>
           </div>
         </div>
       </section>

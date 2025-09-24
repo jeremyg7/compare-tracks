@@ -117,7 +117,7 @@ input[type="range"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 0;
   font-size: 0.9rem;
 }
 
@@ -209,5 +209,79 @@ input[type="range"] {
 
   .transport {
     padding: 20px;
+  }
+}
+
+.transport-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.transport-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.transport-controls button {
+  margin: 0;
+}
+
+.transport .transport-toggle {
+  background: rgba(22, 163, 74, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #bbf7d0;
+}
+
+.transport .transport-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.transport .transport-rewind {
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #e2e8f0;
+}
+
+.transport .transport-rewind:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.transport .transport-toggle:not(:disabled):hover {
+  background: rgba(34, 197, 94, 0.32);
+}
+
+.transport .transport-rewind:not(:disabled):hover {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.shortcut-grid {
+  flex: 1 1 280px;
+}
+
+.shortcut-soon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.coming-soon {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-left: 6px;
+}
+
+@media (max-width: 640px) {
+  .transport-bottom {
+    flex-direction: column;
+    gap: 18px;
   }
 }
