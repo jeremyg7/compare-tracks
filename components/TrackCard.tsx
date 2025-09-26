@@ -21,8 +21,7 @@ export interface TrackCardProps {
     peakDb: number | null;
   };
   isActive: boolean;
-  matchOffset: number;
-  loudnessMatchEnabled: boolean;
+  matchOffset: number | null;
   onFileSelect: (file: File) => void;
   onSetActive: () => void;
   onVolumeChange: (volume: number) => void;
@@ -37,7 +36,6 @@ export function TrackCard({
   track,
   isActive,
   matchOffset,
-  loudnessMatchEnabled,
   onFileSelect,
   onSetActive,
   onVolumeChange
@@ -60,11 +58,11 @@ export function TrackCard({
     : "--";
   const formattedLufs = track.lufsIntegrated === null ? "--" : `${track.lufsIntegrated.toFixed(1)} LUFS`;
   const formattedPeak = formatDb(track.peakDb, "dBFS");
-  const formattedMatch = loudnessMatchEnabled
-    ? matchOffset > 0
+  const formattedMatch = matchOffset === null
+    ? "Not matched"
+    : matchOffset > 0
       ? `-${matchOffset.toFixed(1)} dB`
-      : "0.0 dB"
-    : "Off";
+      : "0.0 dB";
 
   return (
     <article className={`track-card${isActive ? " active" : ""}`}>

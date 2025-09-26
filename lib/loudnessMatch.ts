@@ -1,38 +1,33 @@
-export interface LoudnessMatchSettings {
-  enabled: boolean;
-  targetLufs: number | null;
-  offsets: Record<string, number>;
-}
-
 export function computeLoudnessOffsets(
   lufsByTrack: Record<string, number | null>,
   capDb = 12
 ): Record<string, number> {
-  const entries = Object.entries(lufsByTrack).filter(([, value]) => value !== null) as Array<
-    [string, number]
-  >;
+  const result: Record<string, number> = {};
+  const validValues = Object.entries(lufsByTrack)
+    .map(([, value]) => value)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
-  if (entries.length === 0) {
-    return Object.keys(lufsByTrack).reduce<Record<string, number>>((acc, key) => {
-      acc[key] = 0;
-      return acc;
-    }, {});
+  if (validValues.length === 0) {
+    Object.keys(lufsByTrack).forEach((key) => {
+      result[key] = 0;
+    });
+    return result;
   }
 
-  const target = entries.reduce((min, [, value]) => Math.min(min, value), Infinity);
+  const target = Math.min(...validValues);
 
-  return Object.keys(lufsByTrack).reduce<Record<string, number>>((acc, key) => {
-    const value = lufsByTrack[key];
-    if (typeof value !== "number") {
-      acc[key] = 0;
-      return acc;
+  Object.entries(lufsByTrack).forEach(([key, value]) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      result[key] = 0;
+      return;
     }
 
     const delta = value - target;
     const offset = Math.min(Math.max(delta, 0), capDb);
-    acc[key] = offset;
-    return acc;
-  }, {});
+    result[key] = Number.isFinite(offset) ? offset : 0;
+  });
+
+  return result;
 }
 
 export function offsetToGain(offsetDb: number): number {
