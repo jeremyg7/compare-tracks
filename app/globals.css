@@ -125,17 +125,28 @@ input[type="range"] {
   max-width: 360px;
 }
 
-.match-toggle label {
-  display: flex;
+.match-toggle__button {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.match-toggle input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
-  accent-color: #38bdf8;
+.match-toggle__button:hover {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.match-toggle__button.active {
+  background: rgba(34, 211, 238, 0.18);
+  border-color: rgba(34, 211, 238, 0.45);
+  color: #a5f3fc;
 }
 
 .match-hint {

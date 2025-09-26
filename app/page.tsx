@@ -62,6 +62,9 @@ export default function HomePage() {
     B: 0
   });
   const loudnessOffsetsRef = useRef<Record<TrackId, number>>({ A: 0, B: 0 });
+  const toggleLoudnessMatch = useCallback(() => {
+    setLoudnessMatchEnabled((prev) => !prev);
+  }, []);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Record<TrackId, AudioBuffer | null>>({
@@ -233,7 +236,7 @@ export default function HomePage() {
       setIsPlaying(true);
       rafRef.current = requestAnimationFrame(tick);
     },
-    [activeTrack, ensureAudioContext, teardownNodes, tick, tracks]
+    [activeTrack, ensureAudioContext, teardownNodes, tick, tracks, loudnessMatchEnabled]
   );
 
   const handlePlayPause = useCallback(async () => {
@@ -283,12 +286,14 @@ export default function HomePage() {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
-
         buffersRef.current[trackId] = buffer;
+
         const { lufsIntegrated, peakDb } = await analyzeLoudness(buffer);
-        setTracks((prev) => ({
-          ...prev,
-          [trackId]: {
+
+        let computedOffsets: Record<TrackId, number> | null = null;
+
+        setTracks((prev) => {
+          const updatedTrack = {
             ...prev[trackId],
             name: file.name,
             duration: buffer.duration,
@@ -299,18 +304,28 @@ export default function HomePage() {
             hasBuffer: true,
             lufsIntegrated,
             peakDb
-          }
-        }));
+          };
 
-        const computedOffsets = computeLoudnessOffsets(
-          {
-            A: trackId === "A" ? lufsIntegrated : tracks.A.lufsIntegrated,
-            B: trackId === "B" ? lufsIntegrated : tracks.B.lufsIntegrated
-          },
-          LOUDNESS_CAP_DB
-        ) as Record<TrackId, number>;
-        loudnessOffsetsRef.current = computedOffsets;
-        setLoudnessOffsets(computedOffsets);
+          const updated: Record<TrackId, TrackState> = {
+            ...prev,
+            [trackId]: updatedTrack
+          };
+
+          computedOffsets = computeLoudnessOffsets(
+            {
+              A: updated.A.lufsIntegrated,
+              B: updated.B.lufsIntegrated
+            },
+            LOUDNESS_CAP_DB
+          ) as Record<TrackId, number>;
+
+          return updated;
+        });
+
+        if (computedOffsets) {
+          loudnessOffsetsRef.current = computedOffsets;
+          setLoudnessOffsets(computedOffsets);
+        }
 
         const duration = Math.max(buffer.duration, playbackDurationRef.current);
         playbackDurationRef.current = duration;
@@ -457,15 +472,14 @@ export default function HomePage() {
       </p>
 
       <div className="match-toggle">
-        <label>
-          <input
-            type="checkbox"
-            checked={loudnessMatchEnabled}
-            onChange={(event) => setLoudnessMatchEnabled(event.target.checked)}
-          />
-          Match loudness (≤12 dB reduction)
-        </label>
-        <span className="match-hint">Automatically attenuates louder tracks based on LUFS-I.</span>
+        <button
+          type="button"
+          onClick={toggleLoudnessMatch}
+          className={`match-toggle__button${loudnessMatchEnabled ? " active" : ""}`}
+        >
+          {loudnessMatchEnabled ? "Loudness match on" : "Loudness match off"}
+        </button>
+        <span className="match-hint">Attenuates louder tracks by LUFS-I (max 12 dB).</span>
       </div>
 
       <section className="track-grid">
