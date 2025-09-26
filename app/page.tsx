@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TrackCard } from "@/components/TrackCard";
 import { analyzeLoudness } from "@/lib/audioAnalysis";
 import { formatTime } from "@/lib/formatTime";
+import { computeLoudnessOffsets, offsetToGain } from "@/lib/loudnessMatch";
 
 type TrackId = "A" | "B";
 
@@ -45,6 +46,8 @@ const TRACK_LABEL: Record<TrackId, string> = {
   B: "Track B"
 };
 
+const LOUDNESS_CAP_DB = 12;
+
 export default function HomePage() {
   const [tracks, setTracks] = useState<Record<TrackId, TrackState>>({
     A: initialTrackState("A"),
@@ -53,6 +56,12 @@ export default function HomePage() {
   const [activeTrack, setActiveTrack] = useState<TrackId>("A");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [loudnessMatchEnabled, setLoudnessMatchEnabled] = useState(true);
+  const [loudnessOffsets, setLoudnessOffsets] = useState<Record<TrackId, number>>({
+    A: 0,
+    B: 0
+  });
+  const loudnessOffsetsRef = useRef<Record<TrackId, number>>({ A: 0, B: 0 });
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Record<TrackId, AudioBuffer | null>>({
@@ -148,12 +157,15 @@ export default function HomePage() {
       const audioCtx = audioContextRef.current;
       if (!gainNode || !audioCtx) return;
 
-      const target = trackId === activeTrack ? volume : 0;
+      const loudnessGain = loudnessMatchEnabled
+        ? offsetToGain(loudnessOffsetsRef.current[trackId] ?? 0)
+        : 1;
+      const target = trackId === activeTrack ? volume * loudnessGain : 0;
       const now = audioCtx.currentTime;
       gainNode.gain.cancelScheduledValues(now);
       gainNode.gain.setTargetAtTime(target, now, 0.01);
     },
-    [activeTrack]
+    [activeTrack, loudnessMatchEnabled]
   );
 
   const tick = useCallback(() => {
@@ -203,7 +215,12 @@ export default function HomePage() {
         const maxOffset = Math.max(0, buffer.duration - 0.005);
         const startOffset = Math.max(0, Math.min(offsetSeconds, maxOffset));
 
-        gainNode.gain.value = trackId === activeTrack ? tracks[trackId].volume : 0;
+        const matchedGain = loudnessMatchEnabled
+          ? offsetToGain(loudnessOffsetsRef.current[trackId] ?? 0)
+          : 1;
+        gainNode.gain.value = trackId === activeTrack
+          ? tracks[trackId].volume * matchedGain
+          : 0;
         sourcesRef.current[trackId] = source;
         gainsRef.current[trackId] = gainNode;
 
@@ -285,6 +302,16 @@ export default function HomePage() {
           }
         }));
 
+        const computedOffsets = computeLoudnessOffsets(
+          {
+            A: trackId === "A" ? lufsIntegrated : tracks.A.lufsIntegrated,
+            B: trackId === "B" ? lufsIntegrated : tracks.B.lufsIntegrated
+          },
+          LOUDNESS_CAP_DB
+        ) as Record<TrackId, number>;
+        loudnessOffsetsRef.current = computedOffsets;
+        setLoudnessOffsets(computedOffsets);
+
         const duration = Math.max(buffer.duration, playbackDurationRef.current);
         playbackDurationRef.current = duration;
 
@@ -337,6 +364,11 @@ export default function HomePage() {
     applyGain("A", tracks.A.volume);
     applyGain("B", tracks.B.volume);
   }, [activeTrack, applyGain, tracks.A.volume, tracks.B.volume]);
+
+  useEffect(() => {
+    applyGain("A", tracks.A.volume);
+    applyGain("B", tracks.B.volume);
+  }, [loudnessMatchEnabled, loudnessOffsets, applyGain, tracks.A.volume, tracks.B.volume]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -424,6 +456,18 @@ export default function HomePage() {
         <span className="keycap">T</span> to toggle, and adjust levels independently to match volume.
       </p>
 
+      <div className="match-toggle">
+        <label>
+          <input
+            type="checkbox"
+            checked={loudnessMatchEnabled}
+            onChange={(event) => setLoudnessMatchEnabled(event.target.checked)}
+          />
+          Match loudness (≤12 dB reduction)
+        </label>
+        <span className="match-hint">Automatically attenuates louder tracks based on LUFS-I.</span>
+      </div>
+
       <section className="track-grid">
         {(Object.keys(tracks) as TrackId[]).map((trackId) => {
           const track = tracks[trackId];
@@ -432,6 +476,8 @@ export default function HomePage() {
               key={track.id}
               track={track}
               isActive={activeTrack === trackId}
+              matchOffset={loudnessOffsets[trackId] ?? 0}
+              loudnessMatchEnabled={loudnessMatchEnabled}
               onSetActive={() => setActiveTrack(trackId)}
               onFileSelect={(file) => handleFileSelect(trackId, file)}
               onVolumeChange={(volume) => handleVolumeChange(trackId, volume)}

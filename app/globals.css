@@ -113,6 +113,36 @@ input[type="range"] {
   border-color: rgba(147, 197, 253, 0.8);
 }
 
+.match-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  max-width: 360px;
+}
+
+.match-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.match-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: #38bdf8;
+}
+
+.match-hint {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
 .shortcut-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
