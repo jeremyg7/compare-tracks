@@ -1,7 +1,5 @@
-export interface LoudnessMetrics {
-  lufsIntegrated: number | null;
-  peakDb: number | null;
-}
+import { computeLoudnessMetrics, type LoudnessWorkerPayload } from "./loudnessCore";
+import { LoudnessMetrics } from "./loudnessTypes";
 
 const ABSOLUTE_GATE_LUFS = -70;
 const RELATIVE_GATE_OFFSET = 10;
@@ -22,6 +20,164 @@ const HEAD_FILTER_FEEDBACK = new Float32Array([
 ]);
 const RLB_FILTER_FEEDFORWARD = new Float32Array([1, -2, 1]);
 const RLB_FILTER_FEEDBACK = new Float32Array([1, -1.99004745483398, 0.99007225036621]);
+
+type WorkerResultMessage =
+  | { type: "result"; id: number; result: LoudnessMetrics }
+  | { type: "error"; id: number; error: string };
+
+interface WorkerRequest {
+  resolve: (value: LoudnessMetrics) => void;
+  reject: (reason?: unknown) => void;
+}
+
+interface SerializedWorkerPayload {
+  weightedBuffers: ArrayBuffer[];
+  originalBuffers: ArrayBuffer[];
+  channelWeights: number[];
+  blockSize: number;
+  stepSize: number;
+  totalSamples: number;
+  originalLength: number;
+  absoluteGate: number;
+  relativeGateOffset: number;
+  lufsOffset: number;
+}
+
+let loudnessWorker: Worker | null = null;
+const pendingWorkerRequests = new Map<number, WorkerRequest>();
+let workerMessageId = 0;
+
+const rejectAllPending = (reason: unknown) => {
+  pendingWorkerRequests.forEach(({ reject }) => reject(reason));
+  pendingWorkerRequests.clear();
+};
+
+const handleWorkerMessage = (event: MessageEvent<WorkerResultMessage>) => {
+  const data = event.data;
+  if (!data || typeof data !== "object") {
+    return;
+  }
+
+  const pending = pendingWorkerRequests.get(data.id);
+  if (!pending) {
+    return;
+  }
+
+  pendingWorkerRequests.delete(data.id);
+
+  if (data.type === "result") {
+    pending.resolve(data.result);
+  } else {
+    pending.reject(new Error(data.error));
+  }
+};
+
+const handleWorkerError = (event: ErrorEvent) => {
+  console.error("Loudness worker error", event.message);
+  rejectAllPending(event.error ?? new Error(event.message));
+  teardownWorker();
+};
+
+const teardownWorker = () => {
+  if (!loudnessWorker) {
+    return;
+  }
+
+  loudnessWorker.removeEventListener("message", handleWorkerMessage as EventListener);
+  loudnessWorker.removeEventListener("error", handleWorkerError as EventListener);
+  loudnessWorker.terminate();
+  loudnessWorker = null;
+};
+
+const ensureWorker = (): Worker | null => {
+  if (typeof window === "undefined" || typeof Worker === "undefined") {
+    return null;
+  }
+
+  if (loudnessWorker) {
+    return loudnessWorker;
+  }
+
+  try {
+    loudnessWorker = new Worker(new URL("../workers/loudnessWorker.ts", import.meta.url), {
+      type: "module"
+    });
+    loudnessWorker.addEventListener("message", handleWorkerMessage as EventListener);
+    loudnessWorker.addEventListener("error", handleWorkerError as EventListener);
+    return loudnessWorker;
+  } catch (error) {
+    console.warn("Unable to initialize loudness worker", error);
+    loudnessWorker = null;
+    return null;
+  }
+};
+
+const serializeForWorker = (payload: LoudnessWorkerPayload): SerializedWorkerPayload => ({
+  weightedBuffers: payload.weightedChannels.map((channel) => channel.buffer),
+  originalBuffers: payload.originalChannels.map((channel) => channel.buffer),
+  channelWeights: payload.channelWeights.slice(),
+  blockSize: payload.blockSize,
+  stepSize: payload.stepSize,
+  totalSamples: payload.totalSamples,
+  originalLength: payload.originalLength,
+  absoluteGate: payload.absoluteGate,
+  relativeGateOffset: payload.relativeGateOffset,
+  lufsOffset: payload.lufsOffset
+});
+
+const postToWorker = (worker: Worker, payload: LoudnessWorkerPayload): Promise<LoudnessMetrics> => {
+  const serialized = serializeForWorker(payload);
+  const transferables = serialized.weightedBuffers.concat(serialized.originalBuffers);
+
+  return new Promise((resolve, reject) => {
+    const id = workerMessageId;
+    workerMessageId += 1;
+    pendingWorkerRequests.set(id, { resolve, reject });
+    worker.postMessage(
+      {
+        type: "analyze",
+        id,
+        payload: serialized
+      },
+      transferables
+    );
+  });
+};
+
+const cloneChannels = (buffer: AudioBuffer, desiredChannels: number): Float32Array[] => {
+  const cloned: Float32Array[] = [];
+  for (let channel = 0; channel < desiredChannels; channel += 1) {
+    const sourceChannel =
+      channel < buffer.numberOfChannels
+        ? buffer.getChannelData(channel)
+        : null;
+    const copy = new Float32Array(buffer.length);
+    if (sourceChannel) {
+      copy.set(sourceChannel);
+    }
+    cloned.push(copy);
+  }
+  return cloned;
+};
+
+const analyzeWithWorker = async (
+  payloadFactory: () => LoudnessWorkerPayload
+): Promise<LoudnessMetrics | null> => {
+  const worker = ensureWorker();
+  if (!worker) {
+    return null;
+  }
+
+  try {
+    const payload = payloadFactory();
+    return await postToWorker(worker, payload);
+  } catch (error) {
+    console.warn("Falling back to main-thread loudness analysis", error);
+    rejectAllPending(error);
+    teardownWorker();
+    return null;
+  }
+};
 
 const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
   if (typeof OfflineAudioContext === "undefined") {
@@ -80,24 +236,6 @@ const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
   }
 };
 
-const toLUFS = (meanSquare: number): number => {
-  if (meanSquare <= 0) {
-    return Number.NEGATIVE_INFINITY;
-  }
-  return LUFS_OFFSET + 10 * Math.log10(meanSquare);
-};
-
-const integrateBlocks = (meanSquares: number[]): number | null => {
-  if (meanSquares.length === 0) {
-    return null;
-  }
-  const energy = meanSquares.reduce((sum, value) => sum + value, 0) / meanSquares.length;
-  if (energy <= 0) {
-    return null;
-  }
-  return LUFS_OFFSET + 10 * Math.log10(energy);
-};
-
 export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetrics> {
   const channelCount = buffer.numberOfChannels;
   if (channelCount === 0) {
@@ -105,14 +243,6 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
   }
 
   const weightedBuffer = await applyKWeighting(buffer);
-  const weightedChannels = Array.from({ length: channelCount }, (_, index) =>
-    weightedBuffer.getChannelData(Math.min(index, weightedBuffer.numberOfChannels - 1))
-  );
-
-  const originalChannels = Array.from({ length: channelCount }, (_, index) =>
-    buffer.getChannelData(index)
-  );
-
   const channelWeights = new Array(channelCount).fill(1);
   if (channelCount === 6) {
     // L, R, C, LFE, Ls, Rs — LFE excluded from loudness
@@ -125,78 +255,23 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
   const totalSamples = weightedBuffer.length;
   const originalLength = buffer.length;
 
-  let absolutePeak = 0;
-  for (let channel = 0; channel < channelCount; channel += 1) {
-    const data = originalChannels[channel];
-    for (let i = 0; i < originalLength; i += 1) {
-      const abs = Math.abs(data[i]);
-      if (abs > absolutePeak) {
-        absolutePeak = abs;
-      }
-    }
+  const buildPayload = (): LoudnessWorkerPayload => ({
+    weightedChannels: cloneChannels(weightedBuffer, channelCount),
+    originalChannels: cloneChannels(buffer, channelCount),
+    channelWeights,
+    blockSize,
+    stepSize,
+    totalSamples,
+    originalLength,
+    absoluteGate: ABSOLUTE_GATE_LUFS,
+    relativeGateOffset: RELATIVE_GATE_OFFSET,
+    lufsOffset: LUFS_OFFSET
+  });
+
+  const workerResult = await analyzeWithWorker(buildPayload);
+  if (workerResult) {
+    return workerResult;
   }
 
-  const meanSquares: number[] = [];
-  const lufsPerBlock: number[] = [];
-
-  for (let blockStart = 0; blockStart < totalSamples; blockStart += stepSize) {
-    const actualBlockSize = Math.min(blockSize, totalSamples - blockStart);
-    if (actualBlockSize <= 0) {
-      continue;
-    }
-
-    let blockEnergy = 0;
-
-    for (let channel = 0; channel < channelCount; channel += 1) {
-      const data = weightedChannels[channel];
-      let channelEnergy = 0;
-      for (let i = 0; i < actualBlockSize; i += 1) {
-        const sample = data[blockStart + i] ?? 0;
-        channelEnergy += sample * sample;
-      }
-      blockEnergy += channelWeights[channel] * (channelEnergy / actualBlockSize);
-    }
-
-    const meanSquare = blockEnergy;
-    meanSquares.push(meanSquare);
-    lufsPerBlock.push(toLUFS(meanSquare));
-  }
-
-  const peakDb = absolutePeak > 0 ? Math.min(20 * Math.log10(absolutePeak), 0) : null;
-
-  if (meanSquares.length === 0) {
-    return { lufsIntegrated: null, peakDb };
-  }
-
-  const aboveAbsoluteGate: number[] = [];
-  const aboveAbsoluteGateLufs: number[] = [];
-
-  for (let i = 0; i < meanSquares.length; i += 1) {
-    if (lufsPerBlock[i] > ABSOLUTE_GATE_LUFS) {
-      aboveAbsoluteGate.push(meanSquares[i]);
-      aboveAbsoluteGateLufs.push(lufsPerBlock[i]);
-    }
-  }
-
-  if (aboveAbsoluteGate.length === 0) {
-    return { lufsIntegrated: null, peakDb };
-  }
-
-  const preliminaryLufs = integrateBlocks(aboveAbsoluteGate);
-  if (preliminaryLufs === null) {
-    return { lufsIntegrated: null, peakDb };
-  }
-
-  const relativeGateThreshold = preliminaryLufs - RELATIVE_GATE_OFFSET;
-
-  const aboveRelativeGate: number[] = [];
-  for (let i = 0; i < aboveAbsoluteGate.length; i += 1) {
-    if (aboveAbsoluteGateLufs[i] >= relativeGateThreshold) {
-      aboveRelativeGate.push(aboveAbsoluteGate[i]);
-    }
-  }
-
-  const finalLufs = integrateBlocks(aboveRelativeGate.length ? aboveRelativeGate : aboveAbsoluteGate);
-
-  return { lufsIntegrated: finalLufs, peakDb };
+  return computeLoudnessMetrics(buildPayload());
 }

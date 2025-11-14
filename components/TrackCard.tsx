@@ -173,7 +173,7 @@ export function TrackCard({
       />
 
       {track.loading ? (
-        <p style={{ marginTop: "12px", opacity: 0.75 }}>Decoding audio…</p>
+        <p style={{ marginTop: "12px", opacity: 0.75 }}>Decoding & analyzing loudness…</p>
       ) : null}
     </article>
   );
