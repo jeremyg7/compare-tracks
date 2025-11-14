@@ -87,7 +87,7 @@ export function TrackCard({
             <span>{formattedLufs}</span>
             <span>Peak</span>
             <span>{formattedPeak}</span>
-            <span>Loudness Trim</span>
+            <span>Auto Trim</span>
             <span>{formattedTrim}</span>
           </div>
         </div>
@@ -146,7 +146,7 @@ export function TrackCard({
       </div>
 
       <div className="volume-control" style={{ marginTop: "18px" }}>
-        <label htmlFor={`${inputId}-volume`}>Level</label>
+        <label htmlFor={`${inputId}-volume`}>Fine trim</label>
         <input
           id={`${inputId}-volume`}
           type="range"
@@ -157,10 +157,10 @@ export function TrackCard({
           onChange={(event) => onVolumeChange(Number(event.target.value))}
         />
         <output>
-          {formattedTrim} trim / {sliderPercent}% baseline
+          {sliderPercent}% of matched level
         </output>
         <p style={{ marginTop: "6px", fontSize: "0.85rem", opacity: 0.75 }}>
-          Auto trim only reduces loud tracks; adjust the slider for your preferred baseline level.
+          Use this to nudge a track down after matching; 100% means “use the matched level.”
         </p>
       </div>
 

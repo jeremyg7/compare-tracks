@@ -23,7 +23,8 @@ interface TrackState {
   peakDb: number | null;
 }
 
-const DEFAULT_VOLUME = 0.8;
+const DEFAULT_GLOBAL_VOLUME = 0.9;
+const DEFAULT_FINE_ADJUST = 1;
 const LOUDNESS_CAP_DB = 12;
 
 const initialTrackState = (id: TrackId): TrackState => ({
@@ -34,7 +35,7 @@ const initialTrackState = (id: TrackId): TrackState => ({
   size: null,
   loading: false,
   error: null,
-  volume: DEFAULT_VOLUME,
+  volume: DEFAULT_FINE_ADJUST,
   loudnessTrimDb: 0,
   hasBuffer: false,
   lufsIntegrated: null,
@@ -55,6 +56,7 @@ export default function HomePage() {
     A: initialTrackState("A"),
     B: initialTrackState("B")
   });
+  const [globalVolume, setGlobalVolume] = useState(DEFAULT_GLOBAL_VOLUME);
   const [activeTrack, setActiveTrack] = useState<TrackId>("A");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,7 +90,8 @@ export default function HomePage() {
         const offset = computedOffsets[id] ?? 0;
         updated[id] = {
           ...prev[id],
-          loudnessTrimDb: offset
+          loudnessTrimDb: offset,
+          volume: DEFAULT_FINE_ADJUST
         };
       });
 
@@ -185,19 +188,19 @@ export default function HomePage() {
   );
 
   const applyGain = useCallback(
-    (trackId: TrackId, volume: number, trimDb: number) => {
+    (trackId: TrackId, fineVolume: number, trimDb: number) => {
       const gainNode = gainsRef.current[trackId];
       const audioCtx = audioContextRef.current;
       if (!gainNode || !audioCtx) return;
 
       const trimGain = offsetToGain(trimDb ?? 0);
-      const totalGain = volume * trimGain;
+      const totalGain = globalVolume * fineVolume * trimGain;
       const target = trackId === activeTrack ? totalGain : 0;
       const now = audioCtx.currentTime;
       gainNode.gain.cancelScheduledValues(now);
       gainNode.gain.setTargetAtTime(target, now, 0.01);
     },
-    [activeTrack]
+    [activeTrack, globalVolume]
   );
 
   const tick = useCallback(() => {
@@ -248,7 +251,7 @@ export default function HomePage() {
         const startOffset = Math.max(0, Math.min(offsetSeconds, maxOffset));
 
         const trimDb = tracks[trackId].loudnessTrimDb ?? 0;
-        const totalGain = tracks[trackId].volume * offsetToGain(trimDb);
+        const totalGain = globalVolume * tracks[trackId].volume * offsetToGain(trimDb);
         gainNode.gain.value = trackId === activeTrack ? totalGain : 0;
         sourcesRef.current[trackId] = source;
         gainsRef.current[trackId] = gainNode;
@@ -262,7 +265,7 @@ export default function HomePage() {
       setIsPlaying(true);
       rafRef.current = requestAnimationFrame(tick);
     },
-    [activeTrack, ensureAudioContext, teardownNodes, tick, tracks]
+    [activeTrack, ensureAudioContext, globalVolume, teardownNodes, tick, tracks]
   );
 
   const handlePlayPause = useCallback(async () => {
@@ -327,6 +330,7 @@ export default function HomePage() {
             loading: false,
             error: null,
             hasBuffer: true,
+            volume: DEFAULT_FINE_ADJUST,
             loudnessTrimDb: 0,
             lufsIntegrated,
             peakDb
@@ -347,6 +351,7 @@ export default function HomePage() {
             loading: false,
             error: "Unable to decode this audio file.",
             hasBuffer: false,
+            volume: DEFAULT_FINE_ADJUST,
             loudnessTrimDb: 0,
             lufsIntegrated: null,
             peakDb: null
@@ -360,14 +365,15 @@ export default function HomePage() {
   const handleVolumeChange = useCallback(
     (trackId: TrackId, volume: number) => {
       const trimDb = trackId === "A" ? tracks.A.loudnessTrimDb : tracks.B.loudnessTrimDb;
+      const clampedVolume = Math.max(0, Math.min(1, volume));
       setTracks((prev) => ({
         ...prev,
         [trackId]: {
           ...prev[trackId],
-          volume
+          volume: clampedVolume
         }
       }));
-      applyGain(trackId, volume, trimDb ?? 0);
+      applyGain(trackId, clampedVolume, trimDb ?? 0);
     },
     [applyGain, tracks.A.loudnessTrimDb, tracks.B.loudnessTrimDb]
   );
@@ -491,8 +497,27 @@ export default function HomePage() {
           Match loudness (≤12 dB)
         </button>
         <span className="match-hint">
-          Applies up to 12 dB of reduction per track without moving your sliders; see trims in each card.
+          Applies up to 12 dB of automatic reduction; manual sliders only attenuate further.
         </span>
+      </div>
+
+      <div className="global-volume" style={{ marginTop: "16px" }}>
+        <label htmlFor="global-volume">Global volume</label>
+        <input
+          id="global-volume"
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={globalVolume}
+          onChange={(event) =>
+            setGlobalVolume(Math.max(0, Math.min(1, Number(event.target.value))))
+          }
+        />
+        <output>{Math.round(globalVolume * 100)}%</output>
+        <p style={{ marginTop: "6px", opacity: 0.75 }}>
+          Starts at 90% for safety; you can lower or raise up to 100% but never boost past unity.
+        </p>
       </div>
 
       <section className="track-grid">

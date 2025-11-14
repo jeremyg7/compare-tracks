@@ -40,18 +40,25 @@ This document breaks down the upcoming revisions/features into discrete delivera
 ---
 
 ## 3. Loudness-Match UX & dB Readout
-**Goal**: Preserve the user’s baseline gain, expose adjustments in dB, and make the match button predictable.
+**Goal**: Make the match button deterministic: the quieter track defines the target, the louder track gets an explicit trim, and users get separate controls for overall monitoring level vs. fine per-track offsets.
 
 **Implementation Steps**
-1. Store each track’s absolute gain separately from the derived loudness trim.
-2. Update the slider UI to display both % and dB (e.g., `-3.2 dB / 72%`).
-3. Change `handleLoudnessMatch` so it applies relative trims (up to 12 dB reduction) without resetting the baseline slider.
-4. Add copy in the UI clarifying what values changed.
+1. Introduce two layers of gain:
+   - `globalVolume`: a single slider (0–100%, defaults to 100%) that scales both tracks equally for monitoring comfort.
+   - `perTrackTrimDb`: a per-track fine-tune slider (e.g., ±6 dB range, shown in dB) that lets users bias A vs. B after matching.
+2. When the user clicks Match:
+   - Compute LUFS deltas exactly once, set each track’s `autoTrimDb` so louder tracks are reduced to the quietest LUFS (capped at 12 dB reduction).
+   - Reset `perTrackTrimDb` to 0 so the manual fine sliders always start from the matched baseline.
+3. Effective gain per track becomes `globalVolume * offsetToGain(autoTrimDb + perTrackTrimDb)`. Because `autoTrimDb` never boosts, quieter tracks can’t clip; manual fine trims are clamped so users can’t exceed 0 dB of added gain beyond the global slider.
+4. Update the UI:
+   - Replace the existing per-track slider with two controls: Global Volume and Per-Track Fine Trim (shown in dB with ± values).
+   - Show both `autoTrimDb` (from Match) and `fineTrimDb` (user adjustments) within each card so it’s obvious what the button changed.
+5. Add logic so re-clicking Match recomputes `autoTrimDb` and overwrites the previous trim values (while keeping the current global volume), ensuring users can refresh the match after tweaking.
 
 **Verification**
-- Load two tracks, set Track A slider to ~50%.
-- Hit Match; Track A slider should stay at 50% while Track B adjusts downward (or shows trim indicator).
-- Inspect displayed dB values to ensure they reflect `20 * log10(volume)`.
+- Load two tracks with different LUFS, set Global Volume to 70%, click Match; confirm the louder track shows a negative auto trim and playback level follows the new gains.
+- Move Track A’s fine-trim slider by +1 dB (allowed within safety limits) and confirm only that track’s relative loudness changes.
+- Click Match again; the fine trim resets to 0 while auto trim updates, demonstrating deterministic behavior.
 
 ---
 
