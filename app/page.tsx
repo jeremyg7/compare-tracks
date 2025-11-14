@@ -17,6 +17,7 @@ interface TrackState {
   loading: boolean;
   error: string | null;
   volume: number;
+  loudnessTrimDb: number;
   hasBuffer: boolean;
   lufsIntegrated: number | null;
   peakDb: number | null;
@@ -34,6 +35,7 @@ const initialTrackState = (id: TrackId): TrackState => ({
   loading: false,
   error: null,
   volume: DEFAULT_VOLUME,
+  loudnessTrimDb: 0,
   hasBuffer: false,
   lufsIntegrated: null,
   peakDb: null
@@ -60,10 +62,6 @@ export default function HomePage() {
     A: 0,
     B: 0
   });
-  const [appliedOffsets, setAppliedOffsets] = useState<Record<TrackId, number | null>>({
-    A: null,
-    B: null
-  });
 
   useEffect(() => {
     const offsets = computeLoudnessOffsets(
@@ -75,10 +73,6 @@ export default function HomePage() {
     ) as Record<TrackId, number>;
     setComputedOffsets(offsets);
   }, [tracks.A.lufsIntegrated, tracks.B.lufsIntegrated]);
-
-  useEffect(() => {
-    setAppliedOffsets({ A: null, B: null });
-  }, [tracks.A.name, tracks.B.name]);
 
   const handleLoudnessMatch = useCallback(() => {
     if (tracks.A.lufsIntegrated === null || tracks.B.lufsIntegrated === null) {
@@ -92,17 +86,14 @@ export default function HomePage() {
 
       (Object.keys(prev) as TrackId[]).forEach((id) => {
         const offset = computedOffsets[id] ?? 0;
-        const matchedGain = DEFAULT_VOLUME * offsetToGain(offset);
         updated[id] = {
           ...prev[id],
-          volume: Math.max(0, Math.min(1, matchedGain))
+          loudnessTrimDb: offset
         };
       });
 
       return updated;
     });
-
-    setAppliedOffsets({ ...computedOffsets });
   }, [computedOffsets, tracks.A.lufsIntegrated, tracks.B.lufsIntegrated]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -194,12 +185,14 @@ export default function HomePage() {
   );
 
   const applyGain = useCallback(
-    (trackId: TrackId, volume: number) => {
+    (trackId: TrackId, volume: number, trimDb: number) => {
       const gainNode = gainsRef.current[trackId];
       const audioCtx = audioContextRef.current;
       if (!gainNode || !audioCtx) return;
 
-      const target = trackId === activeTrack ? volume : 0;
+      const trimGain = offsetToGain(trimDb ?? 0);
+      const totalGain = volume * trimGain;
+      const target = trackId === activeTrack ? totalGain : 0;
       const now = audioCtx.currentTime;
       gainNode.gain.cancelScheduledValues(now);
       gainNode.gain.setTargetAtTime(target, now, 0.01);
@@ -254,9 +247,9 @@ export default function HomePage() {
         const maxOffset = Math.max(0, buffer.duration - 0.005);
         const startOffset = Math.max(0, Math.min(offsetSeconds, maxOffset));
 
-        gainNode.gain.value = trackId === activeTrack
-          ? tracks[trackId].volume
-          : 0;
+        const trimDb = tracks[trackId].loudnessTrimDb ?? 0;
+        const totalGain = tracks[trackId].volume * offsetToGain(trimDb);
+        gainNode.gain.value = trackId === activeTrack ? totalGain : 0;
         sourcesRef.current[trackId] = source;
         gainsRef.current[trackId] = gainNode;
 
@@ -334,12 +327,11 @@ export default function HomePage() {
             loading: false,
             error: null,
             hasBuffer: true,
+            loudnessTrimDb: 0,
             lufsIntegrated,
             peakDb
           }
         }));
-
-        setAppliedOffsets({ A: null, B: null });
 
         const duration = Math.max(buffer.duration, playbackDurationRef.current);
         playbackDurationRef.current = duration;
@@ -355,11 +347,11 @@ export default function HomePage() {
             loading: false,
             error: "Unable to decode this audio file.",
             hasBuffer: false,
+            loudnessTrimDb: 0,
             lufsIntegrated: null,
             peakDb: null
           }
         }));
-        setAppliedOffsets({ A: null, B: null });
       }
     },
     [ensureAudioContext, stopPlayback]
@@ -367,6 +359,7 @@ export default function HomePage() {
 
   const handleVolumeChange = useCallback(
     (trackId: TrackId, volume: number) => {
+      const trimDb = trackId === "A" ? tracks.A.loudnessTrimDb : tracks.B.loudnessTrimDb;
       setTracks((prev) => ({
         ...prev,
         [trackId]: {
@@ -374,9 +367,9 @@ export default function HomePage() {
           volume
         }
       }));
-      applyGain(trackId, volume);
+      applyGain(trackId, volume, trimDb ?? 0);
     },
-    [applyGain]
+    [applyGain, tracks.A.loudnessTrimDb, tracks.B.loudnessTrimDb]
   );
 
   const toggleActiveTrack = useCallback(() => {
@@ -391,9 +384,16 @@ export default function HomePage() {
   }, [tracks.A.duration, tracks.B.duration]);
 
   useEffect(() => {
-    applyGain("A", tracks.A.volume);
-    applyGain("B", tracks.B.volume);
-  }, [activeTrack, applyGain, tracks.A.volume, tracks.B.volume]);
+    applyGain("A", tracks.A.volume, tracks.A.loudnessTrimDb);
+    applyGain("B", tracks.B.volume, tracks.B.loudnessTrimDb);
+  }, [
+    activeTrack,
+    applyGain,
+    tracks.A.volume,
+    tracks.B.volume,
+    tracks.A.loudnessTrimDb,
+    tracks.B.loudnessTrimDb
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -490,7 +490,9 @@ export default function HomePage() {
         >
           Match loudness (≤12 dB)
         </button>
-        <span className="match-hint">Sets track levels using LUFS-I, capped at 12 dB reduction.</span>
+        <span className="match-hint">
+          Applies up to 12 dB of reduction per track without moving your sliders; see trims in each card.
+        </span>
       </div>
 
       <section className="track-grid">
@@ -501,7 +503,7 @@ export default function HomePage() {
               key={track.id}
               track={track}
               isActive={activeTrack === trackId}
-              matchOffset={appliedOffsets[trackId] ?? null}
+              trimDb={track.loudnessTrimDb}
               onSetActive={() => setActiveTrack(trackId)}
               onFileSelect={(file) => handleFileSelect(trackId, file)}
               onVolumeChange={(volume) => handleVolumeChange(trackId, volume)}

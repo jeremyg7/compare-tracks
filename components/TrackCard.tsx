@@ -21,7 +21,7 @@ export interface TrackCardProps {
     peakDb: number | null;
   };
   isActive: boolean;
-  matchOffset: number | null;
+  trimDb: number;
   onFileSelect: (file: File) => void;
   onSetActive: () => void;
   onVolumeChange: (volume: number) => void;
@@ -35,7 +35,7 @@ const LABELS: Record<TrackId, string> = {
 export function TrackCard({
   track,
   isActive,
-  matchOffset,
+  trimDb,
   onFileSelect,
   onSetActive,
   onVolumeChange
@@ -58,11 +58,9 @@ export function TrackCard({
     : "--";
   const formattedLufs = track.lufsIntegrated === null ? "--" : `${track.lufsIntegrated.toFixed(1)} LUFS`;
   const formattedPeak = formatDb(track.peakDb, "dBFS");
-  const formattedMatch = matchOffset === null
-    ? "Not matched"
-    : matchOffset > 0
-      ? `-${matchOffset.toFixed(1)} dB`
-      : "0.0 dB";
+  const appliedTrim = Math.max(0, Number.isFinite(trimDb) ? trimDb : 0);
+  const formattedTrim = appliedTrim > 0 ? `-${appliedTrim.toFixed(1)} dB` : "0.0 dB";
+  const sliderPercent = (track.volume * 100).toFixed(0);
 
   return (
     <article className={`track-card${isActive ? " active" : ""}`}>
@@ -89,8 +87,8 @@ export function TrackCard({
             <span>{formattedLufs}</span>
             <span>Peak</span>
             <span>{formattedPeak}</span>
-            <span>Loudness Match</span>
-            <span>{formattedMatch}</span>
+            <span>Loudness Trim</span>
+            <span>{formattedTrim}</span>
           </div>
         </div>
       ) : (
@@ -159,8 +157,11 @@ export function TrackCard({
           onChange={(event) => onVolumeChange(Number(event.target.value))}
         />
         <output>
-          {(track.volume * 100).toFixed(0)}% gain
+          {formattedTrim} trim / {sliderPercent}% baseline
         </output>
+        <p style={{ marginTop: "6px", fontSize: "0.85rem", opacity: 0.75 }}>
+          Auto trim only reduces loud tracks; adjust the slider for your preferred baseline level.
+        </p>
       </div>
 
       <input
