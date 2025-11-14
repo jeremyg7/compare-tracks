@@ -8,6 +8,20 @@ const RELATIVE_GATE_OFFSET = 10;
 const BLOCK_DURATION_SECONDS = 0.4;
 const STEP_DURATION_SECONDS = 0.1;
 const LUFS_OFFSET = -0.691;
+const K_WEIGHT_SAMPLE_RATE = 48000;
+
+const HEAD_FILTER_FEEDFORWARD = new Float32Array([
+  1.53512485958697,
+  -2.69169618940638,
+  1.19839281085285,
+]);
+const HEAD_FILTER_FEEDBACK = new Float32Array([
+  1,
+  -1.69065929318241,
+  0.73248077421585,
+]);
+const RLB_FILTER_FEEDFORWARD = new Float32Array([1, -2, 1]);
+const RLB_FILTER_FEEDBACK = new Float32Array([1, -1.99004745483398, 0.99007225036621]);
 
 const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
   if (typeof OfflineAudioContext === "undefined") {
@@ -15,32 +29,46 @@ const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
   }
 
   try {
+    const renderLength = Math.max(1, Math.ceil(buffer.duration * K_WEIGHT_SAMPLE_RATE));
     const offlineContext = new OfflineAudioContext(
       buffer.numberOfChannels,
-      buffer.length,
-      buffer.sampleRate
+      renderLength,
+      K_WEIGHT_SAMPLE_RATE
     );
 
     const source = offlineContext.createBufferSource();
     source.buffer = buffer;
 
-    // ITU-R BS.1770 K-weighting uses a 60 Hz high-pass followed by a +4 dB
-    // shelf whose corner frequency is 1 kHz. We approximate the cascade with
-    // two biquad filters so the loudness meter lines up with reference tools.
-    const highpass = offlineContext.createBiquadFilter();
-    highpass.type = "highpass";
-    highpass.frequency.value = 60;
-    highpass.Q.value = Math.SQRT1_2;
+    if (typeof offlineContext.createIIRFilter === "function") {
+      // Use the official BS.1770 cascade (spherical head shelf + RLB high-pass)
+      const headFilter = offlineContext.createIIRFilter(
+        HEAD_FILTER_FEEDFORWARD,
+        HEAD_FILTER_FEEDBACK
+      );
+      const rlbFilter = offlineContext.createIIRFilter(
+        RLB_FILTER_FEEDFORWARD,
+        RLB_FILTER_FEEDBACK
+      );
+      source.connect(headFilter);
+      headFilter.connect(rlbFilter);
+      rlbFilter.connect(offlineContext.destination);
+    } else {
+      // Older browsers without IIR support fall back to a close approximation.
+      const highpass = offlineContext.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 60;
+      highpass.Q.value = Math.SQRT1_2;
 
-    const highshelf = offlineContext.createBiquadFilter();
-    highshelf.type = "highshelf";
-    highshelf.frequency.value = 1000;
-    highshelf.gain.value = 4;
-    highshelf.Q.value = Math.SQRT1_2;
+      const highshelf = offlineContext.createBiquadFilter();
+      highshelf.type = "highshelf";
+      highshelf.frequency.value = 4000;
+      highshelf.gain.value = 4;
+      highshelf.Q.value = Math.SQRT1_2;
 
-    source.connect(highpass);
-    highpass.connect(highshelf);
-    highshelf.connect(offlineContext.destination);
+      source.connect(highpass);
+      highpass.connect(highshelf);
+      highshelf.connect(offlineContext.destination);
+    }
 
     source.start(0);
 
@@ -91,14 +119,16 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
     channelWeights[3] = 0;
   }
 
-  const blockSize = Math.max(1, Math.round(BLOCK_DURATION_SECONDS * buffer.sampleRate));
-  const stepSize = Math.max(1, Math.round(STEP_DURATION_SECONDS * buffer.sampleRate));
-  const totalSamples = buffer.length;
+  const weightedSampleRate = weightedBuffer.sampleRate;
+  const blockSize = Math.max(1, Math.round(BLOCK_DURATION_SECONDS * weightedSampleRate));
+  const stepSize = Math.max(1, Math.round(STEP_DURATION_SECONDS * weightedSampleRate));
+  const totalSamples = weightedBuffer.length;
+  const originalLength = buffer.length;
 
   let absolutePeak = 0;
   for (let channel = 0; channel < channelCount; channel += 1) {
     const data = originalChannels[channel];
-    for (let i = 0; i < totalSamples; i += 1) {
+    for (let i = 0; i < originalLength; i += 1) {
       const abs = Math.abs(data[i]);
       if (abs > absolutePeak) {
         absolutePeak = abs;
