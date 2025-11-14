@@ -24,14 +24,17 @@ const applyKWeighting = async (buffer: AudioBuffer): Promise<AudioBuffer> => {
     const source = offlineContext.createBufferSource();
     source.buffer = buffer;
 
+    // ITU-R BS.1770 K-weighting uses a 60 Hz high-pass followed by a +4 dB
+    // shelf whose corner frequency is 1 kHz. We approximate the cascade with
+    // two biquad filters so the loudness meter lines up with reference tools.
     const highpass = offlineContext.createBiquadFilter();
     highpass.type = "highpass";
-    highpass.frequency.value = 40;
+    highpass.frequency.value = 60;
     highpass.Q.value = Math.SQRT1_2;
 
     const highshelf = offlineContext.createBiquadFilter();
     highshelf.type = "highshelf";
-    highshelf.frequency.value = 4000;
+    highshelf.frequency.value = 1000;
     highshelf.gain.value = 4;
     highshelf.Q.value = Math.SQRT1_2;
 
