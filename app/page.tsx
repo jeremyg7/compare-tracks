@@ -483,8 +483,8 @@ export default function HomePage() {
     <main>
       <h1>Compare Tracks</h1>
       <p style={{ opacity: 0.75 }}>
-        Load two tracks to perform synchronized A/B comparisons. Use <span className="keycap">Space</span> to play or pause,
-        <span className="keycap">T</span> to toggle, and adjust levels independently to match volume.
+        Synchronized A/B comparison. Use <span className="keycap">Space</span> to play or pause,{" "}
+        <span className="keycap">T</span> to toggle.
       </p>
 
       <div className="match-toggle">
@@ -496,9 +496,6 @@ export default function HomePage() {
         >
           Match loudness (≤12 dB)
         </button>
-        <span className="match-hint">
-          Applies up to 12 dB of automatic reduction; manual sliders only attenuate further.
-        </span>
       </div>
 
       <div className="global-volume" style={{ marginTop: "16px" }}>

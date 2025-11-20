@@ -160,7 +160,7 @@ export function TrackCard({
           {sliderPercent}% of matched level
         </output>
         <p style={{ marginTop: "6px", fontSize: "0.85rem", opacity: 0.75 }}>
-          Use this to nudge a track down after matching; 100% means “use the matched level.”
+          Lowers individual track volume after matching.
         </p>
       </div>
 

@@ -7,6 +7,7 @@ const BLOCK_DURATION_SECONDS = 0.4;
 const STEP_DURATION_SECONDS = 0.1;
 const LUFS_OFFSET = -0.691;
 const K_WEIGHT_SAMPLE_RATE = 48000;
+const TRUE_PEAK_SAMPLE_RATE = 192000;
 
 const HEAD_FILTER_FEEDFORWARD = new Float32Array([
   1.53512485958697,
@@ -20,6 +21,53 @@ const HEAD_FILTER_FEEDBACK = new Float32Array([
 ]);
 const RLB_FILTER_FEEDFORWARD = new Float32Array([1, -2, 1]);
 const RLB_FILTER_FEEDBACK = new Float32Array([1, -1.99004745483398, 0.99007225036621]);
+
+const computeSamplePeakDb = (buffer: AudioBuffer): number | null => {
+  let peak = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < buffer.length; i += 1) {
+      const abs = Math.abs(data[i]);
+      if (abs > peak) {
+        peak = abs;
+      }
+    }
+  }
+  return peak > 0 ? Math.min(20 * Math.log10(peak), 0) : null;
+};
+
+const computeTruePeakDb = async (buffer: AudioBuffer): Promise<number | null> => {
+  if (typeof OfflineAudioContext === "undefined") {
+    return computeSamplePeakDb(buffer);
+  }
+
+  try {
+    const oversampleRate = Math.min(TRUE_PEAK_SAMPLE_RATE, buffer.sampleRate * 4);
+    const frameCount = Math.max(1, Math.ceil(buffer.duration * oversampleRate));
+    const offlineContext = new OfflineAudioContext(buffer.numberOfChannels, frameCount, oversampleRate);
+    const source = offlineContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offlineContext.destination);
+    source.start(0);
+    const rendered = await offlineContext.startRendering();
+
+    let peak = 0;
+    for (let channel = 0; channel < rendered.numberOfChannels; channel += 1) {
+      const data = rendered.getChannelData(channel);
+      for (let i = 0; i < rendered.length; i += 1) {
+        const abs = Math.abs(data[i]);
+        if (abs > peak) {
+          peak = abs;
+        }
+      }
+    }
+
+    return peak > 0 ? Math.min(20 * Math.log10(peak), 0) : null;
+  } catch (error) {
+    console.warn("True-peak analysis failed; falling back to sample peak", error);
+    return computeSamplePeakDb(buffer);
+  }
+};
 
 type WorkerResultMessage =
   | { type: "result"; id: number; result: LoudnessMetrics }
@@ -268,10 +316,13 @@ export async function analyzeLoudness(buffer: AudioBuffer): Promise<LoudnessMetr
     lufsOffset: LUFS_OFFSET
   });
 
+  const peakDb = await computeTruePeakDb(buffer);
+
   const workerResult = await analyzeWithWorker(buildPayload);
   if (workerResult) {
-    return workerResult;
+    return { ...workerResult, peakDb };
   }
 
-  return computeLoudnessMetrics(buildPayload());
+  const fallbackResult = computeLoudnessMetrics(buildPayload());
+  return { ...fallbackResult, peakDb };
 }
